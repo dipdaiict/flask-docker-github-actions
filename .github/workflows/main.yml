@@ -1,1 +1,72 @@
+name: Flask CI/CD Pipeline  #  Workflow Name
 
+on:      # Events Defined.
+  push:  # Workflow triggered when there's a push event to the main branch
+    branches: [ main ]  # Only triggered for pushes to the main branch
+
+jobs:
+  build:  # Job responsible for building and testing the Flask application
+    runs-on: ${{ matrix.os }}  # Runs on the specified operating system (OS)
+    strategy:    # For Testing On Multiple OS & Python Versions
+      matrix:
+        os: [ ubuntu-latest ]  # Matrix for running on a single OS for simplicity
+        python-version: [3.8, 3.9]  # Matrix for testing with multiple Python versions
+
+    steps:
+      - name: Checkout code  # Fetches the code from the repository
+        uses: actions/checkout@v2
+
+      - name: Set up Python ${{ matrix.python-version }}  # Sets up the Python environment
+        uses: actions/setup-python@v2
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Create virtual environment (venv)  # Creates a virtual environment for isolation
+        run: python -m venv venv
+
+      - name: Install dependencies  # Installs required dependencies from requirements.txt
+        run: |
+          source venv/bin/activate
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Print debugging information  # Gathers and prints environment details
+        run: |
+          echo "Python Version: $(python --version)"
+          echo "Working Directory: $(pwd)"
+          echo "Contents of Working Directory: $(ls -l)"
+          echo "Contents of site-packages: $(ls -l venv/lib/python*/site-packages)"
+
+      - name: Run tests  # Executes tests to verify application functionality
+        run: |
+          source venv/bin/activate
+          python test_hello.py
+    
+  docker:  # Job responsible for building and pushing the Docker image
+      needs: build  # Requires successful completion of the build job
+      runs-on: ubuntu-latest  # Runs on Ubuntu for consistency
+
+      steps:
+        - name: Checkout code  # Fetches the code from the repository
+          uses: actions/checkout@v2
+
+        - name: Build Docker image  # Builds the Docker image using Dockerfile
+          run: docker build -t my-flask-app .  # Builds image tagged as "my-flask-app"
+
+        - name: Run Docker container (for testing)  # Optionally, runs the container for testing
+          run: docker run -d -p 80:80 my-flask-app  # Runs container in detached mode, mapping port 80
+
+  publish:  # Job responsible for publishing the Docker image to a registry
+      needs: docker  # Requires successful completion of the docker job
+      runs-on: ubuntu-latest  # Runs on Ubuntu for consistency
+
+      steps:
+        - name: Checkout code  # Fetches the code from the repository
+          uses: actions/checkout@v2
+
+        - name: Publish to Docker Registry  # Pushes the image to the specified registry
+          uses: elgohr/Publish-Docker-Github-Action@v5  # Uses a custom action for publishing
+          with:
+            name: dippdatel/flask_docker_github_actions # Name of the repository to push to
+            username: ${{ secrets.DOCKER_USERNAME }}  # Username for registry access (stored in a secret)
+            password: ${{ secrets.DOCKER_PASSWORD }}  # Password for registry access (stored in a secret)    
